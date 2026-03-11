@@ -1,0 +1,154 @@
+services:
+  nginx:
+    build: ./requirements/nginx
+    container_name: nginx
+    image: nginx
+    depends_on:
+      - wordpress
+    ports:
+      - "443:443"
+    volumes:
+      - wordpress_files:/var/www/html
+    networks:
+      - inception
+    restart: unless-stopped
+
+  wordpress:
+    build: ./requirements/wordpress
+    container_name: wordpress
+    image: wordpress
+    depends_on:
+      - mariadb
+    env_file:
+      - .env
+    secrets:
+      - db_password
+      - credentials
+      - wp_user_password
+    environment:
+      MYSQL_DB: ${MYSQL_DB}
+      MYSQL_USER: ${MYSQL_USER}
+      DOMAIN_NAME: ${DOMAIN_NAME}
+      WP_ADMIN_USER: ${WP_ADMIN_USER}
+      WP_ADMIN_EMAIL: ${WP_ADMIN_EMAIL}
+      WP_USER: ${WP_USER}
+      WP_USER_EMAIL: ${WP_USER_EMAIL}
+    volumes:
+      - wordpress_files:/var/www/html
+    networks:
+      - inception
+    restart: unless-stopped
+
+  mariadb:
+    build: ./requirements/mariadb
+    container_name: mariadb
+    image: mariadb
+    secrets:
+      - db_password
+      - db_root_password
+    environment:
+      MYSQL_DB: ${MYSQL_DB}
+      MYSQL_USER: ${MYSQL_USER}
+    env_file:
+      - .env
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - inception
+    restart: unless-stopped
+
+  redis:
+    build: ./requirements/redis
+    container_name: redis
+    image: redis
+    networks:
+      - inception
+    restart: unless-stopped
+
+  ftp:
+    build: ./requirements/ftp
+    container_name: ftp
+    image: ftp
+    ports:
+      - "21:21"
+      - "40000-40010:40000-40010"
+    volumes:
+      - wordpress_files:/var/www/html
+    environment:
+      FTP_USER: ftpuser
+    secrets:
+      - ftp_pass
+    networks:
+      - inception
+    restart: unless-stopped
+
+  static_site:
+    build: ./requirements/static_site
+    container_name: static_site
+    image: static_site
+    ports:
+      - "8080:80"
+    networks:
+      - inception
+    restart: unless-stopped
+
+  adminer:
+    build: ./requirements/adminer
+    container_name: adminer
+    image: adminer
+    depends_on:
+      - mariadb
+    ports:
+      - "8081:8080"
+    networks:
+      - inception
+    restart: unless-stopped
+
+  backup:
+    build: ./requirements/backup
+    container_name: backup
+    image: backup
+    depends_on:
+      - mariadb
+      - wordpress
+    env_file:
+      - .env
+    environment:
+      BACKUP_SCHEDULE: "0 3 * * *"
+    secrets:
+      - db_password
+    volumes:
+      - wordpress_files:/var/www/html:ro
+      - ./backups:/backups
+    networks:
+      - inception
+    restart: unless-stopped
+networks:
+  inception:
+    driver: bridge
+
+volumes:
+  wordpress_files:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/mouka/data/wordpress
+  db_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/mouka/data/mariadb
+
+secrets:
+  db_password:
+    file: ../secrets/db_password.txt
+  db_root_password:
+    file: ../secrets/db_root_password.txt
+  credentials:
+    file: ../secrets/credentials.txt
+  wp_user_password:
+    file: ../secrets/wp_user_password.txt
+  ftp_pass:
+    file: ../secrets/ftp_pass.txt
